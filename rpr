@@ -41,7 +41,9 @@ class Reviewer
       logger.info "No backup file found at #{backup_file}"
     end
 
+    branch_to_delete = current_branch
     checkout_main_branch
+    delete_branch(branch_to_delete)
   end
 
   def cherry_pick
@@ -68,6 +70,16 @@ class Reviewer
   end
 
   private
+
+  def delete_branch(branch_to_delete)
+    result = `git br -D '#{branch_to_delete}'`
+    if $?.success?
+      logger.info "branch #{branch_to_delete} deleted"
+    else
+      logger.warn "branch #{branch_to_delete} was not deleted"
+      logger.debug result
+    end
+  end
 
   def restore_command(sql_file)
     @restore_command ||= "zcat #{sql_file} | sudo su - postgres -c 'psql -d #{db_name} -f -'"
