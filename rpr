@@ -1,0 +1,224 @@
+#!/usr/bin/env ruby
+
+require 'fileutils'
+require 'logger'
+require 'yaml'
+require 'rest-client'
+
+class Reviewer
+  attr_accessor :pwd, :logger, :backup_path
+
+  def initialize
+    @logger = Logger.new(STDOUT)
+    @logger.level = Logger::DEBUG
+    @pwd = Dir.pwd
+    @backup_dir = File.join(@pwd, 'tmp/db_backups')
+    @db_config ||= Hash.new { |h,k| h[k] = {} }
+  end
+
+  def review
+    wrong_call! if ARGV.size != 1
+    db_exists? ? backup_db : logger.debug("No DB config found at #{db_file}, skipping backup")
+    # if first argument was a number we do the checkout, otherwise we just dump the db with suffix specified as argument
+    if pr_number && pr_number.to_i.to_s == pr_number
+      checkout_pr
+    end
+  end
+
+  def restore
+    wrong_call! if ARGV.size > 1
+
+    backup_file = restore_db_file_name(ARGV[0])
+    if File.exists?(backup_file)
+      logger.info "Found backup path at #{backup_file}"
+      logger.info "Should I restore this DB version? (y)es (*)no"
+      if STDIN.gets.chomp == 'y'
+        logger.info "... restoring"
+        restore_db(backup_file)
+        logger.info "... restored"
+      end
+    else
+      logger.info "No backup file found at #{backup_file}"
+    end
+
+    checkout_main_branch
+  end
+
+  def cherry_pick
+    wrong_call! if ARGV.size != 1
+    logger.debug 'pulling latest version from origin remote'
+    `git pull`
+    if $?.success?
+      logger.debug 'pulled from origin'
+    else
+      logger.datal 'git pull failed, uou can try it manually'
+      exit(5)
+    end
+
+    add_remote
+    remote_info = load_remote_info(pr_number)
+    logger.debug "cherry-picking #{remote_info[:name]}/#{remote_info[:branch]}"
+    `git cherry-pick #{remote_info[:name]}/#{remote_info[:branch]}`
+    if $?.success?
+      logger.info "Everything set, happy pushing"
+    else
+      logger.fatal "Cherry-picking failed, try it yourself by running `git cherry-pick #{remote_info[:name]}/#{remote_info[:branch]}`"
+      exit(4)
+    end
+  end
+
+  private
+
+  def restore_command(sql_file)
+    @restore_command ||= "zcat #{sql_file} | sudo su - postgres -c 'psql -d #{db_name} -f -'"
+  end
+
+  def restore_db(filename)
+    `#{restore_command(filename)}`
+    if $?.success?
+      logger.info "DB #{filename} restored"
+    else
+      logger.fatal "DB restoring failed"
+      exit(6)
+    end
+  end
+
+  def restore_db_file_name(specific = nil)
+    File.join(@backup_dir, "pre_review_#{specific || current_branch.sub(/^review\/pr/, '')}.sql.gz")
+  end
+
+  def current_branch
+    `git rev-parse --abbrev-ref HEAD`.chomp
+  end
+
+  def add_remote
+    remote_info = load_remote_info(pr_number)
+    `git remote  | grep ^#{remote_info[:name]}$`
+    if $?.success?
+      logger.debug "remote #{remote_info[:name]} is already defined"
+    else
+      logger.debug "defining remote #{remote_info[:name]} with url #{remote_info[:url]}"
+      `git remote add '#{remote_info[:name]}' '#{remote_info[:url]}'`
+    end
+    logger.debug "fetching from #{remote_info[:name]}"
+    `git fetch #{remote_info[:name]}`
+    remote_info
+  end
+
+  def load_remote_info(pr)
+    data = YAML.load(RestClient.get("https://api.github.com/repos/theforeman/foreman/pulls/#{pr}.yaml"))
+    name = data['head']['repo']['owner']['login'].downcase
+    url = data['head']['repo']['html_url']
+    branch = data['head']['ref']
+
+    { :name => name, :url => url, :branch => branch }
+  end
+
+  def checkout_main_branch
+    `git checkout develop`
+  end
+
+  def checkout_pr
+    remote_info = add_remote
+    remote_name = remote_info[:name]
+    remote_branch = remote_info[:branch]
+
+    `git checkout -b 'review/pr#{pr_number}'`
+    unless $?.success?
+      logger.fatal 'git checkout failed, failing without pulling'
+      exit(2)
+    end
+
+    `git pull #{remote_name} #{remote_branch}`
+    if $?.success?
+      logger.info "Everything set, happy reviewing"
+    else
+      logger.fatal "Pulling failed, try it yourself by running `git pull ##{remote_name} #{remote_branch}`"
+      exit(3)
+    end
+  end
+
+  def wrong_call!
+    puts "Usage: #{$0} $PR_NUMBER"
+    exit(2)
+  end
+
+  def backup_db
+    logger.debug "Database file found at #{db_file}, triggering backup"
+    return true if verify_target
+    result = `#{backup_command}`
+    if $?.success?
+      logger.debug "backup successfully saved at #{backup_path}"
+    else
+      logger.fatal 'backup command failed'
+      logger.fatal "`#{backup_command}`"
+      logger.fatal result
+    end
+    result
+  end
+
+  def verify_target
+    FileUtils.mkdir_p @backup_dir
+    if File.exists?(backup_path)
+      logger.warn "backup already exists at #{backup_path}, should I override it (y)es (s)kip (*)exit?"
+      case STDIN.gets.chomp
+      when  'y'
+        logger.info "... will override #{backup_path} with new snapshot"
+        return false
+      when 's'
+        logger.info "... will skip backup, leaving #{backup_path} as it is"
+        return true
+      else
+        logger.fatal "exiting"
+        exit(1)
+      end
+    end
+  end
+
+  def backup_command
+    @backup_command ||= "sudo su - postgres -c 'pg_dump --clean #{db_name}' | gzip > #{backup_path}"
+  end
+
+  def backup_path
+    @backup_path ||= File.join(@backup_dir, backup_name)
+  end
+
+  def pr_number
+    ARGV[0]
+  end
+
+  def backup_name
+    "pre_review_#{pr_number}.sql.gz"
+  end
+
+  def db_name
+    db_config('development')['database']
+  end
+
+  def db_user
+    db_config('development')['username']
+  end
+
+  def db_config(environment)
+    @db_config[environment] = YAML.load_file(db_file)[environment]
+  end
+
+  def db_exists?
+    File.exists?(db_file)
+  end
+
+  def db_file
+    @db_file ||= File.join(@pwd, 'config/database.yml')
+  end
+end
+
+case File.basename($0)
+  when 'rpr'
+    Reviewer.new.review
+  when 'crp'
+    Reviewer.new.cherry_pick
+  when 'rrpr'
+    Reviewer.new.restore
+  else
+    raise ArgumentError 'unknown invocation name'
+end
