@@ -41,9 +41,13 @@ class Reviewer
       logger.info "No backup file found at #{backup_file}"
     end
 
-    branch_to_delete = current_branch
-    checkout_main_branch
-    delete_branch(branch_to_delete)
+    if current_branch != main_branch
+      branch_to_delete = current_branch
+      checkout_main_branch
+      delete_branch(branch_to_delete)
+    else
+      logger.info "already on main branch #{current_branch}, skipping branch cleanup"
+    end
   end
 
   def cherry_pick
@@ -126,8 +130,12 @@ class Reviewer
     { :name => name, :url => url, :branch => branch }
   end
 
+  def main_branch
+    'develop'
+  end
+
   def checkout_main_branch
-    `git checkout develop`
+    `git checkout #{main_branch}`
   end
 
   def checkout_pr
