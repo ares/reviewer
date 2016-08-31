@@ -135,7 +135,12 @@ class Reviewer
   end
 
   def main_branch
-    'develop'
+    case current_project
+    when 'foreman', 'smart-proxy'
+      'develop'
+    else
+      'master'
+    end
   end
 
   def checkout_main_branch
