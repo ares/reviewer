@@ -121,8 +121,12 @@ class Reviewer
     remote_info
   end
 
+  def current_project
+    Dir.pwd.split('/').last.sub(/_upstream$/, '')
+  end
+
   def load_remote_info(pr)
-    data = YAML.load(RestClient.get("https://api.github.com/repos/theforeman/foreman/pulls/#{pr}.yaml"))
+    data = YAML.load(RestClient.get("https://api.github.com/repos/theforeman/#{current_project}/pulls/#{pr}.yaml"))
     name = data['head']['repo']['owner']['login'].downcase
     url = data['head']['repo']['html_url']
     branch = data['head']['ref']
