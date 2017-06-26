@@ -111,14 +111,33 @@ class Reviewer
     remote_info = load_remote_info(pr_number)
     `git remote  | grep ^#{remote_info[:name]}$`
     if $?.success?
-      logger.debug "remote #{remote_info[:name]} is already defined"
+      if (url = `git remote get-url #{remote_info[:name]}`) =~ /\Ahttp/
+        change_remote_to_ssh(remote_info[:name], url)
+      else
+        logger.debug "remote #{remote_info[:name]} is already defined"
+      end
     else
       logger.debug "defining remote #{remote_info[:name]} with url #{remote_info[:url]}"
-      `git remote add '#{remote_info[:name]}' '#{remote_info[:url]}'`
+      `git remote add '#{remote_info[:name]}' '#{sshize_url(remote_info[:url])}'`
     end
     logger.debug "fetching from #{remote_info[:name]}"
     `git fetch #{remote_info[:name]}`
     remote_info
+  end
+
+  def change_remote_to_ssh(name, url)
+    logger.debug "remote #{name} defined using HTTP, redefining to use SSH"
+    url = sshize_url(url)
+    `git remote set-url #{name} #{url}`
+    if $?.success?
+      logger.debug "remote url should be fixed to #{url}"
+    else
+      logger.info "remote url was not updated, trying to conitnue with the old one"
+    end
+  end
+
+  def sshize_url(url)
+    url.chomp.sub('https://github.com/', 'git@github.com:') + '.git'
   end
 
   def current_project
@@ -162,7 +181,7 @@ class Reviewer
     if $?.success?
       logger.info "Everything set, happy reviewing"
     else
-      logger.fatal "Pulling failed, try it yourself by running `git pull ##{remote_name} #{remote_branch}`"
+      logger.fatal "Pulling failed, try it yourself by running `git pull #{remote_name} #{remote_branch}`"
       exit(3)
     end
   end
