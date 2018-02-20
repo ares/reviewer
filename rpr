@@ -76,7 +76,7 @@ class Reviewer
   private
 
   def delete_branch(branch_to_delete)
-    result = `git br -D '#{branch_to_delete}'`
+    result = `git branch -D '#{branch_to_delete}'`
     if $?.success?
       logger.info "branch #{branch_to_delete} deleted"
     else
@@ -145,12 +145,21 @@ class Reviewer
   end
 
   def load_remote_info(pr)
-    data = YAML.load(RestClient.get("https://api.github.com/repos/theforeman/#{current_project}/pulls/#{pr}.yaml"))
+    data = YAML.load(RestClient.get("https://api.github.com/repos/#{main_github_organization}/#{current_project}/pulls/#{pr}.yaml"))
     name = data['head']['repo']['owner']['login'].downcase
     url = data['head']['repo']['html_url']
     branch = data['head']['ref']
 
     { :name => name, :url => url, :branch => branch }
+  end
+
+  def main_github_organization
+    case current_project
+    when 'katello'
+      'katello'
+    else
+      'theforeman'
+    end
   end
 
   def main_branch
