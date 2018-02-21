@@ -57,7 +57,7 @@ class Reviewer
     if $?.success?
       logger.debug 'pulled from origin'
     else
-      logger.datal 'git pull failed, uou can try it manually'
+      logger.fatal 'git pull failed, you can try it manually'
       exit(5)
     end
 
