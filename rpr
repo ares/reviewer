@@ -61,14 +61,21 @@ class Reviewer
       exit(5)
     end
 
-    add_remote
-    remote_info = load_remote_info(pr_number)
-    logger.debug "cherry-picking #{remote_info[:name]}/#{remote_info[:branch]}"
-    `git cherry-pick #{remote_info[:name]}/#{remote_info[:branch]}`
+    logger.debug "fetching pr #{pr_number}"
+    `git fetch #{remote_name} pull/#{pr_number}/head:pr-#{pr_number}`
+    if $?.success?
+      logger.debug "fetched pr #{pr_number}"
+    else
+      logger.fatal "Fetching failed, try it yourself by running `git fetch #{remote_name} pull/#{pr_number}/head:pr-#{pr_number}`"
+      exit(4)
+    end
+
+    logger.debug "cherry-picking pr #{pr_number}"
+    `git cherry-pick pr-#{pr_number}`
     if $?.success?
       logger.info "Everything set, happy pushing"
     else
-      logger.fatal "Cherry-picking failed, try it yourself by running `git cherry-pick #{remote_info[:name]}/#{remote_info[:branch]}`"
+      logger.fatal "Cherry-picking failed, try it yourself by running `git cherry-pick pr-#{pr_number}`"
       exit(4)
     end
   end
@@ -107,59 +114,13 @@ class Reviewer
     `git rev-parse --abbrev-ref HEAD`.chomp
   end
 
-  def add_remote
-    remote_info = load_remote_info(pr_number)
-    `git remote  | grep ^#{remote_info[:name]}$`
-    if $?.success?
-      if (url = `git remote get-url #{remote_info[:name]}`) =~ /\Ahttp/
-        change_remote_to_ssh(remote_info[:name], url)
-      else
-        logger.debug "remote #{remote_info[:name]} is already defined"
-      end
-    else
-      logger.debug "defining remote #{remote_info[:name]} with url #{remote_info[:url]}"
-      `git remote add '#{remote_info[:name]}' '#{sshize_url(remote_info[:url])}'`
-    end
-    logger.debug "fetching from #{remote_info[:name]}"
-    `git fetch #{remote_info[:name]}`
-    remote_info
-  end
-
-  def change_remote_to_ssh(name, url)
-    logger.debug "remote #{name} defined using HTTP, redefining to use SSH"
-    url = sshize_url(url)
-    `git remote set-url #{name} #{url}`
-    if $?.success?
-      logger.debug "remote url should be fixed to #{url}"
-    else
-      logger.info "remote url was not updated, trying to conitnue with the old one"
-    end
-  end
-
-  def sshize_url(url)
-    url.chomp.sub('https://github.com/', 'git@github.com:') + '.git'
-  end
-
   def current_project
     Dir.pwd.split('/').last.sub(/_upstream$/, '')
   end
 
-  def load_remote_info(pr)
-    data = YAML.load(RestClient.get("https://api.github.com/repos/#{main_github_organization}/#{current_project}/pulls/#{pr}.yaml"))
-    name = data['head']['repo']['owner']['login'].downcase
-    url = data['head']['repo']['html_url']
-    branch = data['head']['ref']
-
-    { :name => name, :url => url, :branch => branch }
-  end
-
-  def main_github_organization
-    case current_project
-    when 'katello'
-      'katello'
-    else
-      'theforeman'
-    end
+  def remote_name
+    remotes = `git remote`.split()
+    remotes.find { |remote| ['origin', 'upstream'].include? remote } || remotes.first
   end
 
   def main_branch
@@ -176,21 +137,17 @@ class Reviewer
   end
 
   def checkout_pr
-    remote_info = add_remote
-    remote_name = remote_info[:name]
-    remote_branch = remote_info[:branch]
-
     `git checkout -b 'review/pr#{pr_number}'`
     unless $?.success?
       logger.fatal 'git checkout failed, failing without pulling'
       exit(2)
     end
 
-    `git pull #{remote_name} #{remote_branch}`
+    `git pull #{remote_name} pull/#{pr_number}/head`
     if $?.success?
       logger.info "Everything set, happy reviewing"
     else
-      logger.fatal "Pulling failed, try it yourself by running `git pull #{remote_name} #{remote_branch}`"
+      logger.fatal "Pulling failed, try it yourself by running `git pull #{remote_name} pull/#{pr_number}/head`"
       exit(3)
     end
   end
