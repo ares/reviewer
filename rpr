@@ -4,6 +4,7 @@ require 'fileutils'
 require 'logger'
 require 'yaml'
 require 'rest-client'
+require 'bundler'
 
 class Reviewer
   attr_accessor :pwd, :logger, :backup_path
@@ -70,6 +71,22 @@ class Reviewer
     else
       logger.fatal "Cherry-picking failed, try it yourself by running `git cherry-pick #{remote_info[:name]}/#{remote_info[:branch]}`"
       exit(4)
+    end
+  end
+
+  def update_source_code
+    paths = Bundler.definition.dependencies.map(&:source).compact.map(&:path)
+    paths.each do |path|
+      logger.debug "updating #{path}"
+      Dir.chdir(path) do
+        output = `git pull upstream #{current_branch}`
+        if $?.success?
+          logger.debug "#{path} updated"
+        else
+          logger.debug output
+          logger.error "git pull upsrteam #{current_branch} in #{path} failed, skipping"
+        end
+      end
     end
   end
 
@@ -276,6 +293,8 @@ case File.basename($0)
     Reviewer.new.cherry_pick
   when 'rrpr'
     Reviewer.new.restore
+  when 'usc'
+    Reviewer.new.update_source_code
   else
     raise ArgumentError 'unknown invocation name'
 end

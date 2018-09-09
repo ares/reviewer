@@ -12,6 +12,7 @@ The script changes its behavior based on the name with which it's being called. 
 
 * `ln -s ~/.bin/rpr ~/.bin/crp`
 * `ln -s ~/.bin/rpr ~/.bin/rrpr`
+* `ln -s ~/.bin/rpr ~/.bin/usc`
 
 ## Usage
 
@@ -32,3 +33,7 @@ Once you finished reviewing and you want to get back to normal operation, you ca
 ### CheRry Pick
 
 If you're happy with the PR you might want to cherry-pick it. I have always separate repository that has write access to main repositories so I'm running the command there. It expects that the branch that's currently active is the branch that I want the PR to be cherry-picked to. The cherry-pick is similar to `rpr` but you run `crp $id`, where $id is again the id of PR that should be cherry-picked. The script won't do `git push`, you should verify it did the right thing, you did the right thing and then push to remote repository.
+
+### Update Source Code
+
+In dev env, you often want to update source codes of all plugins/dependencies that you're using from git checkout. In order to do so, run the script with `usc` name. That will scan current bundler configuration, find all sources that lists path and then, one by one, it does `git pull upstream $branch` in those directories. The $branch is in fact currently checked branch in that git repo.
