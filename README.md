@@ -14,6 +14,12 @@ The script changes its behavior based on the name with which it's being called. 
 * `ln -s ~/.bin/rpr ~/.bin/rrpr`
 * `ln -s ~/.bin/rpr ~/.bin/usc`
 
+### Authentication
+
+You can create a file with github OAuth token so your Github queries are authenticated. This is useful if your IP reached the limit of 5000 calls per day. In order
+to use it, create OAuth token go to [https://github.com/settings/tokens] and create a new token. Then store this to `.token` file in the same repository where you
+installed reviewer, e.g. `~/.bin/.token`.
+
 ## Usage
 
 ### Review Pull Request

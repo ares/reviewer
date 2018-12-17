@@ -162,7 +162,14 @@ class Reviewer
   end
 
   def load_remote_info(pr)
-    data = YAML.load(RestClient.get("https://api.github.com/repos/#{main_github_organization}/#{current_project}/pulls/#{pr}.yaml"))
+    token_path = File.expand_path(File.dirname(__FILE__)) + '/.token'
+    if File.exists?(token_path)
+      token = "access_token=#{File.read(token_path)}"
+    else
+      token = ''
+    end
+
+    data = YAML.load(RestClient.get("https://api.github.com/repos/#{main_github_organization}/#{current_project}/pulls/#{pr}.yaml?#{token}"))
     name = data['head']['repo']['owner']['login'].downcase
     url = data['head']['repo']['html_url']
     branch = data['head']['ref']
@@ -191,7 +198,7 @@ class Reviewer
   def checkout_main_branch
     `git checkout #{main_branch}`
   end
-
+  
   def checkout_pr
     remote_info = add_remote
     remote_name = remote_info[:name]
