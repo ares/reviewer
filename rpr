@@ -158,7 +158,13 @@ class Reviewer
   end
 
   def current_project
-    Dir.pwd.split('/').last.sub(/_upstream$/, '')
+    project = Dir.pwd.split('/').last.sub(/_upstream$/, '')
+    case project
+    when 'foreman_tasks'
+      'foreman-tasks'
+    else
+      project
+    end
   end
 
   def load_remote_info(pr)
