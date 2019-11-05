@@ -128,7 +128,7 @@ class Reviewer
     remote_info = load_remote_info(pr_number)
     `git remote  | grep ^#{remote_info[:name]}$`
     if $?.success?
-      if (url = `git remote get-url #{remote_info[:name]}`) =~ /\Ahttp/
+      if (url = `git config --get remote.#{remote_info[:name]}.url`) =~ /\Ahttp/
         change_remote_to_ssh(remote_info[:name], url)
       else
         logger.debug "remote #{remote_info[:name]} is already defined"
